@@ -1,4 +1,4 @@
-package placer
+package jsluice
 
 // Portions of the jsluice compatibility API and matching behavior are derived
 // from BishopFox/jsluice, MIT licensed:

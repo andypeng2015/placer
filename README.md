@@ -27,9 +27,14 @@ for `urls`, `secrets`, `tree`, `query`, and `format`.
 
 ## Go API
 
-The root package exposes a jsluice-shaped API:
+The root package name is `jsluice` on purpose. Existing tools can use a
+`go.mod` replacement for source compatibility with `github.com/BishopFox/jsluice`
+or the gotreesitter fork, while new code can import the module with a local
+`placer` alias:
 
 ```go
+import placer "github.com/m31-labs/placer"
+
 analyzer := placer.NewAnalyzer([]byte(`
   fetch('/api/users?id=' + userID, {method: "POST"})
 `))

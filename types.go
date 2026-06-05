@@ -1,4 +1,4 @@
-package placer
+package jsluice
 
 import "time"
 

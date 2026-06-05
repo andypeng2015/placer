@@ -1,4 +1,4 @@
-package placer
+package jsluice
 
 type CompatFinding struct {
 	Type    string `json:"type"`
