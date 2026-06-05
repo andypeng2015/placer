@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	placer "github.com/m31-labs/placer"
+	placer "m31labs.dev/placer"
 )
 
 func main() {

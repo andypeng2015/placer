@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	placer "github.com/m31-labs/placer"
+	placer "m31labs.dev/placer"
 	"github.com/pkg/profile"
 	"github.com/slyrz/warc"
 	flag "github.com/spf13/pflag"

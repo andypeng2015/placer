@@ -10,7 +10,7 @@ still depends on a v0.6-era parser.
 Install the compatibility command:
 
 ```sh
-go install github.com/m31-labs/placer/cmd/jsluice@latest
+go install m31labs.dev/placer/cmd/jsluice@latest
 ```
 
 Use it like upstream `jsluice`:
@@ -33,7 +33,7 @@ or the gotreesitter fork, while new code can import the module with a local
 `placer` alias:
 
 ```go
-import placer "github.com/m31-labs/placer"
+import placer "m31labs.dev/placer"
 
 analyzer := placer.NewAnalyzer([]byte(`
   fetch('/api/users?id=' + userID, {method: "POST"})

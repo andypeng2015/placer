@@ -1,4 +1,4 @@
-module github.com/m31-labs/placer
+module m31labs.dev/placer
 
 go 1.25.0
 
