@@ -1,6 +1,8 @@
 package jsluice
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -41,6 +43,44 @@ func TestTemplatePathFolding(t *testing.T) {
 		t.Fatalf("AnalyzeSource: %v", err)
 	}
 	assertFinding(t, res.Findings, "path", "/api/users/*")
+}
+
+func TestAnalyzeFilesStableOrderWithWorkers(t *testing.T) {
+	dir := t.TempDir()
+	paths := make([]string, 0, 4)
+	for _, name := range []string{"a", "b", "c", "d"} {
+		path := filepath.Join(dir, name+".js")
+		if err := os.WriteFile(path, []byte(`fetch("/`+name+`")`), 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		paths = append(paths, path)
+	}
+	res, err := AnalyzeFiles(paths, Options{Mode: ModeURLs, Workers: 4})
+	if err != nil {
+		t.Fatalf("AnalyzeFiles: %v", err)
+	}
+	if len(res.Files) != len(paths) {
+		t.Fatalf("files = %#v", res.Files)
+	}
+	for i, file := range res.Files {
+		if file.Path != paths[i] {
+			t.Fatalf("file %d path = %s, want %s", i, file.Path, paths[i])
+		}
+	}
+}
+
+func TestAnalyzeFilesHonorsMaxFileBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.js")
+	if err := os.WriteFile(path, []byte(`fetch("/too-large")`), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	res, err := AnalyzeFiles([]string{path}, Options{Mode: ModeURLs, MaxFileBytes: 4})
+	if err != nil {
+		t.Fatalf("AnalyzeFiles: %v", err)
+	}
+	if len(res.Errors) != 1 || !strings.Contains(res.Errors[0].Error, "file exceeds max size") {
+		t.Fatalf("errors = %#v", res.Errors)
+	}
 }
 
 func assertFinding(t *testing.T, findings []Finding, kind, contains string) {

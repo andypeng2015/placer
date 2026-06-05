@@ -138,71 +138,68 @@ func processFiles(files []string, opts options, modeFn cmdFn, stdout, stderr io.
 	if opts.concurrency < 1 {
 		opts.concurrency = 1
 	}
-	type job struct{ name string }
+	type job struct {
+		index int
+		name  string
+	}
+	type result struct {
+		index int
+		lines []string
+		errs  []error
+	}
 	jobs := make(chan job)
-	output := make(chan string)
-	errs := make(chan error)
+	results := make(chan result, len(files))
 	var wg sync.WaitGroup
 	for i := 0; i < opts.concurrency; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for job := range jobs {
+				res := result{index: job.index}
 				if opts.warc {
 					responses, err := readWARCFile(job.name)
 					if err != nil {
-						errs <- err
+						res.errs = append(res.errs, err)
+						results <- res
 						continue
 					}
 					for _, response := range responses {
 						lines, lineErrs := modeFn(opts, response.url, response.source)
-						for _, line := range lines {
-							output <- line
-						}
-						for _, err := range lineErrs {
-							errs <- err
-						}
+						res.lines = append(res.lines, lines...)
+						res.errs = append(res.errs, lineErrs...)
 					}
+					results <- res
 					continue
 				}
 				source, err := readFromFileOrURL(job.name, opts)
 				if err != nil {
-					errs <- err
+					res.errs = append(res.errs, err)
+					results <- res
 					continue
 				}
 				lines, lineErrs := modeFn(opts, job.name, source)
-				for _, line := range lines {
-					output <- line
-				}
-				for _, err := range lineErrs {
-					errs <- err
-				}
+				res.lines = append(res.lines, lines...)
+				res.errs = append(res.errs, lineErrs...)
+				results <- res
 			}
 		}()
 	}
-	done := make(chan struct{})
 	go func() {
-		for _, file := range files {
-			jobs <- job{name: file}
+		for i, file := range files {
+			jobs <- job{index: i, name: file}
 		}
 		close(jobs)
 		wg.Wait()
-		close(done)
+		close(results)
 	}()
-	for {
-		select {
-		case line := <-output:
-			if line != "" {
-				fmt.Fprintln(stdout, line)
-			}
-		case err := <-errs:
-			if err != nil {
-				fmt.Fprintf(stderr, "error: %s\n", err)
-			}
-		case <-done:
-			return nil
-		}
+	ordered := make([]result, len(files))
+	for res := range results {
+		ordered[res.index] = res
 	}
+	for _, res := range ordered {
+		_ = emitResults(stdout, stderr, res.lines, res.errs)
+	}
+	return nil
 }
 
 func emitResults(stdout, stderr io.Writer, lines []string, errs []error) error {
