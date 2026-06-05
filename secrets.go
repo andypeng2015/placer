@@ -16,9 +16,10 @@ var secretRulesFS embed.FS
 var secretTokenRe = regexp.MustCompile(`[A-Za-z0-9_./+=:-]{20,}`)
 
 type secretCandidate struct {
-	Value    string
-	Context  string
-	Location Location
+	Value       string
+	Context     string
+	Location    Location
+	RecoveredBy string
 }
 
 func extractSecretFindings(path string, tree *gotreesitter.Tree) ([]Finding, error) {
@@ -47,32 +48,28 @@ func collectSecretCandidates(path string, tree *gotreesitter.Tree) []secretCandi
 	if tree == nil {
 		return nil
 	}
-	lang := tree.Language()
 	source := tree.Source()
 	var out []secretCandidate
 	seen := map[string]struct{}{}
-	walkNode(tree.RootNode(), func(n *gotreesitter.Node) {
-		if !isLiteralType(n.Type(lang)) {
-			return
-		}
-		lit, ok := parseJSLiteral(n.Text(source))
-		if !ok {
-			return
-		}
+	for _, recovered := range collectRecoveredStrings(tree) {
+		n := recovered.Node
 		ctx := lineContext(source, int(n.StartByte()))
+		if recovered.Recovered != "" && recovered.Recovered != "literal" {
+			ctx = ctx + " [recovered: " + recovered.Recovered + "]"
+		}
 		loc := locationForNode(path, n)
-		for _, token := range secretTokens(lit.Value) {
+		for _, token := range secretTokens(recovered.Value) {
 			if suppressSecretCandidate(token, ctx) {
 				continue
 			}
-			key := fmt.Sprintf("%s\x00%d\x00%d", token, loc.ByteStart, loc.ByteEnd)
+			key := fmt.Sprintf("%s\x00%d\x00%d\x00%s", token, loc.ByteStart, loc.ByteEnd, recovered.Recovered)
 			if _, ok := seen[key]; ok {
 				continue
 			}
 			seen[key] = struct{}{}
-			out = append(out, secretCandidate{Value: token, Context: ctx, Location: loc})
+			out = append(out, secretCandidate{Value: token, Context: ctx, Location: loc, RecoveredBy: recovered.Recovered})
 		}
-	})
+	}
 	return out
 }
 
@@ -97,6 +94,10 @@ type secretMatch struct {
 }
 
 func classifySecret(candidate secretCandidate) ([]secretMatch, error) {
+	return defaultSecretClassifier.Classify(candidate)
+}
+
+func classifySecretWithGoRules(candidate secretCandidate) []secretMatch {
 	value := candidate.Value
 	var out []secretMatch
 	for _, rule := range builtInSecretRules {
@@ -107,7 +108,7 @@ func classifySecret(candidate secretCandidate) ([]secretMatch, error) {
 	if len(out) == 0 && len(value) >= 24 && shannonEntropy(value) >= 4.0 && secretContextRe.MatchString(candidate.Context) {
 		out = append(out, secretMatch{class: "generic_high_entropy", confidence: 0.58})
 	}
-	return out, nil
+	return out
 }
 
 type builtInSecretRule struct {

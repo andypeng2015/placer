@@ -26,9 +26,9 @@ func parseJSLiteral(raw string) (literalValue, bool) {
 	body := raw[1 : len(raw)-1]
 	if quote == '`' {
 		value, dynamic := foldTemplateBody(body)
-		return literalValue{Value: unescapeJS(value), Dynamic: dynamic, Template: true}, true
+		return literalValue{Value: DecodeString("`" + value + "`"), Dynamic: dynamic, Template: true}, true
 	}
-	return literalValue{Value: unescapeJS(body)}, true
+	return literalValue{Value: DecodeString(raw)}, true
 }
 
 func foldTemplateBody(body string) (string, bool) {

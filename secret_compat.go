@@ -60,7 +60,86 @@ func (a *Analyzer) GetSecrets() []*Secret {
 			}
 		}
 	}
+	out = append(out, a.getRecoveredSecrets()...)
 	return out
+}
+
+func (a *Analyzer) getRecoveredSecrets() []*Secret {
+	if a == nil || a.tree == nil {
+		return nil
+	}
+	var out []*Secret
+	seen := map[string]struct{}{}
+	for _, candidate := range collectSecretCandidates("", a.tree) {
+		if candidate.RecoveredBy == "" || candidate.RecoveredBy == "literal" {
+			continue
+		}
+		matches, err := classifySecret(candidate)
+		if err != nil {
+			continue
+		}
+		for _, match := range matches {
+			secret := compatSecretFromMatch(candidate, match)
+			if secret == nil {
+				continue
+			}
+			key := secret.Kind + "\x00" + candidate.Value + "\x00" + candidate.RecoveredBy
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, secret)
+		}
+	}
+	return out
+}
+
+func compatSecretFromMatch(candidate secretCandidate, match secretMatch) *Secret {
+	kind := match.class
+	severity := SeverityMedium
+	dataKey := "match"
+	switch match.class {
+	case "aws_access_key":
+		kind = "AWSAccessKey"
+		severity = SeverityLow
+		dataKey = "key"
+	case "google_api_key":
+		kind = "gcpKey"
+		severity = SeverityLow
+		dataKey = "key"
+	case "github_token":
+		kind = "githubKey"
+		severity = SeverityLow
+		dataKey = "key"
+	case "stripe_secret_key":
+		kind = "stripeSecretKey"
+		severity = SeverityHigh
+		dataKey = "key"
+	case "slack_token":
+		kind = "slackToken"
+		severity = SeverityHigh
+		dataKey = "token"
+	case "jwt":
+		kind = "jwt"
+		severity = SeverityMedium
+		dataKey = "token"
+	case "generic_high_entropy":
+		kind = "genericHighEntropy"
+		severity = SeverityMedium
+	}
+	data := map[string]string{
+		dataKey:       candidate.Value,
+		"recoveredBy": candidate.RecoveredBy,
+	}
+	return &Secret{
+		Kind:     kind,
+		Data:     data,
+		Severity: severity,
+		Context: map[string]string{
+			"source":      candidate.Context,
+			"recoveredBy": candidate.RecoveredBy,
+		},
+	}
 }
 
 func AllSecretMatchers() []SecretMatcher {

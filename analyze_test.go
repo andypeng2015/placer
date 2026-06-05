@@ -45,6 +45,32 @@ func TestTemplatePathFolding(t *testing.T) {
 	assertFinding(t, res.Findings, "path", "/api/users/*")
 }
 
+func TestAnalyzeSourceFindsObfuscatedSecrets(t *testing.T) {
+	src := []byte(`
+const aws = 'AKIA' + '1234567890ABCDEF';
+const gh = atob('Z2hwX2FiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJSg==');
+const stripe = String.fromCharCode(115,107,95,108,105,118,101,95,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80);
+const gcp = Buffer.from('QUl6YWFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJ', 'base64').toString();
+`)
+	res, err := AnalyzeSource("obfuscated.js", src, Options{Mode: ModeSecrets})
+	if err != nil {
+		t.Fatalf("AnalyzeSource: %v", err)
+	}
+	assertFinding(t, res.Findings, "secret", "AKIA1234567890ABCDEF")
+	assertFinding(t, res.Findings, "secret", "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ")
+	assertFinding(t, res.Findings, "secret", "sk_live_ABCDEFGHIJKLMNOP")
+	assertFinding(t, res.Findings, "secret", "AIzaabcdefghijklmnopqrstuvwxyzABCDEFGHI")
+	assertSecret(t, res.Findings, "aws_access_key")
+	assertSecret(t, res.Findings, "github_token")
+	assertSecret(t, res.Findings, "stripe_secret_key")
+	assertSecret(t, res.Findings, "google_api_key")
+	for _, finding := range res.Findings {
+		if finding.Rule == "aws_access_key" && !strings.Contains(finding.Context, "recovered: concat") {
+			t.Fatalf("aws finding context = %q, want recovery marker", finding.Context)
+		}
+	}
+}
+
 func TestAnalyzeFilesStableOrderWithWorkers(t *testing.T) {
 	dir := t.TempDir()
 	paths := make([]string, 0, 4)

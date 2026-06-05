@@ -38,6 +38,32 @@ func TestCLISecretsRawInputJSONL(t *testing.T) {
 	}
 }
 
+func TestCLISecretsObfuscatedRawInputJSONL(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run([]string{"secrets", "--raw-input"}, strings.NewReader(`
+const aws = 'AKIA' + '1234567890ABCDEF';
+const gh = atob('Z2hwX2FiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJSg==');
+const stripe = String.fromCharCode(115,107,95,108,105,118,101,95,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80);
+`), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v stderr=%s", err, stderr.String())
+	}
+	kinds := map[string]bool{}
+	for _, obj := range parseJSONL(t, stdout.String()) {
+		kind, _ := obj["kind"].(string)
+		kinds[kind] = true
+		data, _ := obj["data"].(map[string]any)
+		if kind == "AWSAccessKey" && data["recoveredBy"] != "concat" {
+			t.Fatalf("aws data = %#v", data)
+		}
+	}
+	for _, want := range []string{"AWSAccessKey", "githubKey", "stripeSecretKey"} {
+		if !kinds[want] {
+			t.Fatalf("missing %s in %s", want, stdout.String())
+		}
+	}
+}
+
 func TestCLIQueryRawInput(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := run([]string{"query", "--raw-input", "-q", "(string) @str"}, strings.NewReader(`const x = "ok";`), &stdout, &stderr)

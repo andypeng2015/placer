@@ -241,6 +241,31 @@ const clone = "https://Some-User:ghp_BsE8x5x89jzGZxbQgFJNi4tkxs1F4EXAMPLE@github
 	}
 }
 
+func TestJSLuiceCompatObfuscatedSecrets(t *testing.T) {
+	source := []byte(`
+const aws = 'AKIA' + '1234567890ABCDEF';
+const gh = atob('Z2hwX2FiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJSg==');
+const stripe = String.fromCharCode(115,107,95,108,105,118,101,95,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80);
+`)
+	secrets := NewAnalyzer(source).GetSecrets()
+	kinds := map[string]bool{}
+	recovered := map[string]string{}
+	for _, secret := range secrets {
+		kinds[secret.Kind] = true
+		if data, ok := secret.Data.(map[string]string); ok {
+			recovered[secret.Kind] = data["recoveredBy"]
+		}
+	}
+	for _, want := range []string{"AWSAccessKey", "githubKey", "stripeSecretKey"} {
+		if !kinds[want] {
+			t.Fatalf("missing %s in %#v", want, secrets)
+		}
+		if recovered[want] == "" {
+			t.Fatalf("missing recovery metadata for %s in %#v", want, secrets)
+		}
+	}
+}
+
 func TestJSLuiceCompatHTMLInlineScript(t *testing.T) {
 	analyzer := NewAnalyzer([]byte(`<script type="text/javascript"> var contextPath = '/somepage.html'; </script><html></html>`))
 	urls := analyzer.GetURLs()
