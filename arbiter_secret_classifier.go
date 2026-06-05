@@ -45,6 +45,7 @@ func (c *arbiterSecretClassifier) Classify(candidate secretCandidate) ([]secretM
 			"length":      len(candidate.Value),
 			"entropy":     shannonEntropy(candidate.Value),
 			"recoveredBy": candidate.RecoveredBy,
+			"placeholder": isPlaceholderSecretCandidate(candidate.Value, candidate.Context),
 		},
 	}
 	matched, err := arbiter.Eval(c.program, arbiter.DataFromMap(ctx, c.program))
@@ -66,7 +67,7 @@ func (c *arbiterSecretClassifier) Classify(candidate secretCandidate) ([]secretM
 		}
 		out = append(out, secretMatch{class: class, confidence: confidence})
 	}
-	return out, nil
+	return normalizeSecretMatches(out), nil
 }
 
 func (goSecretClassifier) Classify(candidate secretCandidate) ([]secretMatch, error) {

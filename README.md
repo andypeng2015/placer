@@ -61,7 +61,9 @@ go run ./cmd/placer query -query '(call_expression function: (_) @fn)' app.js
 
 - URL extraction for location assignments, `location.replace`, `window.open`,
   `fetch`, generic URL-like calls, string literals, jQuery, and XHR.
-- Secret extraction for AWS, GCP, Firebase, GitHub, and jsluice user patterns.
+- Secret extraction for AWS, GCP, Firebase, GitHub, Stripe, Slack, JWT,
+  generic high-entropy literals, obfuscated string recovery, and jsluice user
+  patterns.
 - Tree-sitter query helpers, syntax tree printing, raw stdin, stdin file lists,
   local file input, HTTP(S) input, and WARC input.
 - Pure Go, no CGo.
@@ -70,4 +72,5 @@ go run ./cmd/placer query -query '(call_expression function: (_) @fn)' app.js
 
 ```sh
 go test ./...
+go test -run TestSecretCorpusPrecisionRecall -v
 ```

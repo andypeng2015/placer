@@ -266,6 +266,27 @@ const stripe = String.fromCharCode(115,107,95,108,105,118,101,95,65,66,67,68,69,
 	}
 }
 
+func TestJSLuiceCompatContextFreeModernSecrets(t *testing.T) {
+	source := []byte(`$.ajax({data:{k:"AKIAIOSFODNN7EXAMPLE"}});const t="ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";const s="sk_live_ABCDEFGHIJKLMNOP";const j="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.TJVA95OrM7E2cBab30RMHrHDcEfxjoYZgeFONFh7HgQ";`)
+	secrets := NewAnalyzer(source).GetSecrets()
+	kinds := map[string]bool{}
+	counts := map[string]int{}
+	for _, secret := range secrets {
+		kinds[secret.Kind] = true
+		counts[secret.Kind+" "+compatSecretPrimaryValue(secret)]++
+	}
+	for _, want := range []string{"AWSAccessKey", "githubKey", "stripeSecretKey", "jwt"} {
+		if !kinds[want] {
+			t.Fatalf("missing %s in %#v", want, secrets)
+		}
+	}
+	for key, count := range counts {
+		if count > 1 {
+			t.Fatalf("duplicate %s count=%d in %#v", key, count, secrets)
+		}
+	}
+}
+
 func TestJSLuiceCompatHTMLInlineScript(t *testing.T) {
 	analyzer := NewAnalyzer([]byte(`<script type="text/javascript"> var contextPath = '/somepage.html'; </script><html></html>`))
 	urls := analyzer.GetURLs()

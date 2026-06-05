@@ -43,6 +43,7 @@ func (a *Analyzer) GetSecrets() []*Secret {
 		return nil
 	}
 	out := make([]*Secret, 0)
+	seen := map[string]struct{}{}
 	nodeCache := make(map[string][]*Node)
 	matchers := AllSecretMatchers()
 	matchers = append(matchers, a.userSecretMatchers...)
@@ -56,24 +57,21 @@ func (a *Analyzer) GetSecrets() []*Secret {
 		}
 		for _, n := range nodes {
 			if match := matcher.Fn(n); match != nil {
+				rememberCompatSecret(seen, match)
 				out = append(out, match)
 			}
 		}
 	}
-	out = append(out, a.getRecoveredSecrets()...)
+	out = append(out, a.getClassifiedSecrets(seen)...)
 	return out
 }
 
-func (a *Analyzer) getRecoveredSecrets() []*Secret {
+func (a *Analyzer) getClassifiedSecrets(seen map[string]struct{}) []*Secret {
 	if a == nil || a.tree == nil {
 		return nil
 	}
 	var out []*Secret
-	seen := map[string]struct{}{}
 	for _, candidate := range collectSecretCandidates("", a.tree) {
-		if candidate.RecoveredBy == "" || candidate.RecoveredBy == "literal" {
-			continue
-		}
 		matches, err := classifySecret(candidate)
 		if err != nil {
 			continue
@@ -83,12 +81,65 @@ func (a *Analyzer) getRecoveredSecrets() []*Secret {
 			if secret == nil {
 				continue
 			}
-			key := secret.Kind + "\x00" + candidate.Value + "\x00" + candidate.RecoveredBy
+			key := compatSecretKey(secret)
 			if _, ok := seen[key]; ok {
 				continue
 			}
 			seen[key] = struct{}{}
 			out = append(out, secret)
+		}
+	}
+	return out
+}
+
+func rememberCompatSecret(seen map[string]struct{}, secret *Secret) {
+	if seen == nil || secret == nil {
+		return
+	}
+	seen[compatSecretKey(secret)] = struct{}{}
+	for _, value := range compatSecretValues(secret) {
+		seen["genericHighEntropy\x00"+value] = struct{}{}
+	}
+}
+
+func compatSecretKey(secret *Secret) string {
+	if secret == nil {
+		return ""
+	}
+	return secret.Kind + "\x00" + compatSecretPrimaryValue(secret)
+}
+
+func compatSecretPrimaryValue(secret *Secret) string {
+	values := compatSecretValues(secret)
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func compatSecretValues(secret *Secret) []string {
+	if secret == nil {
+		return nil
+	}
+	switch data := secret.Data.(type) {
+	case map[string]string:
+		return orderedCompatDataValues(func(key string) string { return data[key] })
+	case map[string]any:
+		return orderedCompatDataValues(func(key string) string {
+			if value, ok := data[key].(string); ok {
+				return value
+			}
+			return ""
+		})
+	}
+	return nil
+}
+
+func orderedCompatDataValues(valueFor func(string) string) []string {
+	var out []string
+	for _, key := range []string{"key", "token", "match", "value", "secret"} {
+		if value := valueFor(key); value != "" {
+			out = append(out, value)
 		}
 	}
 	return out

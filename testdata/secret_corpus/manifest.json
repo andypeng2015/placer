@@ -1,0 +1,44 @@
+{
+  "files": [
+    {
+      "path": "known-secrets.bundle.min.js",
+      "expected": [
+        {
+          "rule": "aws_access_key",
+          "value": "AKIAIOSFODNN7EXAMPLE"
+        },
+        {
+          "rule": "github_token",
+          "value": "ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ"
+        },
+        {
+          "rule": "stripe_secret_key",
+          "value": "sk_live_ABCDEFGHIJKLMNOP"
+        },
+        {
+          "rule": "jwt",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.TJVA95OrM7E2cBab30RMHrHDcEfxjoYZgeFONFh7HgQ"
+        },
+        {
+          "rule": "slack_token",
+          "parts": [
+            "xo",
+            "xb-123456789012-abcdefABCDEF123456"
+          ]
+        },
+        {
+          "rule": "google_api_key",
+          "value": "AIzaabcdefghijklmnopqrstuvwxyzABCDEFGHI"
+        },
+        {
+          "rule": "generic_high_entropy",
+          "value": "MNBVCXZLKJHGFDSAPOIUYTREWQ987654"
+        }
+      ]
+    },
+    {
+      "path": "negative.bundle.min.js",
+      "expected": []
+    }
+  ]
+}

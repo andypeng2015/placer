@@ -64,6 +64,35 @@ const stripe = String.fromCharCode(115,107,95,108,105,118,101,95,65,66,67,68,69,
 	}
 }
 
+func TestCLISecretsContextFreeMinifiedRawInputJSONL(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run([]string{"secrets", "--raw-input"}, strings.NewReader(`$.ajax({data:{k:"AKIAIOSFODNN7EXAMPLE"}});const t="ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";const s="sk_live_ABCDEFGHIJKLMNOP";const j="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.TJVA95OrM7E2cBab30RMHrHDcEfxjoYZgeFONFh7HgQ";`), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v stderr=%s", err, stderr.String())
+	}
+	kinds := map[string]bool{}
+	counts := map[string]int{}
+	for _, obj := range parseJSONL(t, stdout.String()) {
+		kind, _ := obj["kind"].(string)
+		kinds[kind] = true
+		data, _ := obj["data"].(map[string]any)
+		key, _ := data["key"].(string)
+		token, _ := data["token"].(string)
+		match, _ := data["match"].(string)
+		counts[kind+" "+firstNonEmpty(key, token, match)]++
+	}
+	for _, want := range []string{"AWSAccessKey", "githubKey", "stripeSecretKey", "jwt"} {
+		if !kinds[want] {
+			t.Fatalf("missing %s in %s", want, stdout.String())
+		}
+	}
+	for key, count := range counts {
+		if count > 1 {
+			t.Fatalf("duplicate %s count=%d in %s", key, count, stdout.String())
+		}
+	}
+}
+
 func TestCLIQueryRawInput(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := run([]string{"query", "--raw-input", "-q", "(string) @str"}, strings.NewReader(`const x = "ok";`), &stdout, &stderr)
@@ -224,4 +253,13 @@ func parseJSONL(t *testing.T, output string) []map[string]any {
 		objs = append(objs, obj)
 	}
 	return objs
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

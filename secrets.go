@@ -41,7 +41,7 @@ func extractSecretFindings(path string, tree *gotreesitter.Tree) ([]Finding, err
 			})
 		}
 	}
-	return dedupeFindings(out), nil
+	return dedupeSecretFindings(out), nil
 }
 
 func collectSecretCandidates(path string, tree *gotreesitter.Tree) []secretCandidate {
@@ -59,9 +59,6 @@ func collectSecretCandidates(path string, tree *gotreesitter.Tree) []secretCandi
 		}
 		loc := locationForNode(path, n)
 		for _, token := range secretTokens(recovered.Value) {
-			if suppressSecretCandidate(token, ctx) {
-				continue
-			}
 			key := fmt.Sprintf("%s\x00%d\x00%d\x00%s", token, loc.ByteStart, loc.ByteEnd, recovered.Recovered)
 			if _, ok := seen[key]; ok {
 				continue
@@ -105,10 +102,14 @@ func classifySecretWithGoRules(candidate secretCandidate) []secretMatch {
 			out = append(out, secretMatch{class: rule.class, confidence: rule.confidence})
 		}
 	}
-	if len(out) == 0 && len(value) >= 24 && shannonEntropy(value) >= 4.0 && secretContextRe.MatchString(candidate.Context) {
-		out = append(out, secretMatch{class: "generic_high_entropy", confidence: 0.58})
+	if len(value) >= 24 && shannonEntropy(value) >= 4.0 && !isPlaceholderSecretCandidate(value, candidate.Context) {
+		confidence := 0.45
+		if secretContextRe.MatchString(candidate.Context) {
+			confidence = 0.65
+		}
+		out = append(out, secretMatch{class: "generic_high_entropy", confidence: confidence})
 	}
-	return out
+	return normalizeSecretMatches(out)
 }
 
 type builtInSecretRule struct {
@@ -129,8 +130,8 @@ var (
 	secretContextRe = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|passwd|password|bearer|authorization)`)
 )
 
-func suppressSecretCandidate(value, context string) bool {
-	lower := strings.ToLower(value + " " + context)
+func isPlaceholderSecretCandidate(value, _ string) bool {
+	lower := strings.ToLower(value)
 	if strings.Contains(lower, "example") || strings.Contains(lower, "placeholder") || strings.Contains(lower, "your_") {
 		return true
 	}
@@ -139,6 +140,81 @@ func suppressSecretCandidate(value, context string) bool {
 	}
 	if strings.HasPrefix(strings.ToLower(value), "http://") || strings.HasPrefix(strings.ToLower(value), "https://") {
 		return true
+	}
+	return false
+}
+
+func normalizeSecretMatches(in []secretMatch) []secretMatch {
+	if len(in) == 0 {
+		return nil
+	}
+	best := make(map[string]secretMatch, len(in))
+	hasSpecific := false
+	for _, match := range in {
+		if match.class == "" {
+			continue
+		}
+		if match.class != "generic_high_entropy" {
+			hasSpecific = true
+		}
+		if current, ok := best[match.class]; !ok || match.confidence > current.confidence {
+			best[match.class] = match
+		}
+	}
+	out := make([]secretMatch, 0, len(best))
+	for _, match := range in {
+		if match.class == "generic_high_entropy" && hasSpecific {
+			continue
+		}
+		if bestMatch, ok := best[match.class]; ok && bestMatch == match {
+			out = append(out, match)
+			delete(best, match.class)
+		}
+	}
+	return out
+}
+
+func dedupeSecretFindings(in []Finding) []Finding {
+	if len(in) == 0 {
+		return nil
+	}
+	var specificValues []string
+	for _, finding := range in {
+		if finding.Kind == "secret" && finding.Rule != "generic_high_entropy" && finding.Value != "" {
+			specificValues = append(specificValues, finding.Value)
+		}
+	}
+	out := make([]Finding, 0, len(in))
+	index := map[string]int{}
+	for _, finding := range in {
+		if finding.Kind != "secret" {
+			out = append(out, finding)
+			continue
+		}
+		if finding.Rule == "generic_high_entropy" && genericContainedInSpecific(finding.Value, specificValues) {
+			continue
+		}
+		key := finding.Rule + "\x00" + finding.Value
+		if existing, ok := index[key]; ok {
+			if finding.Confidence > out[existing].Confidence {
+				out[existing] = finding
+			}
+			continue
+		}
+		index[key] = len(out)
+		out = append(out, finding)
+	}
+	return out
+}
+
+func genericContainedInSpecific(value string, specificValues []string) bool {
+	if value == "" {
+		return false
+	}
+	for _, specific := range specificValues {
+		if specific != value && strings.Contains(specific, value) {
+			return true
+		}
 	}
 	return false
 }

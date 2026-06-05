@@ -71,6 +71,69 @@ const gcp = Buffer.from('QUl6YWFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6QUJDREVGR0hJ', 
 	}
 }
 
+func TestAnalyzeSourceClassifiesContextFreeMinifiedSecrets(t *testing.T) {
+	src := []byte(`$.ajax({data:{k:"AKIAIOSFODNN7EXAMPLE"}});const t="ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";const s="sk_live_ABCDEFGHIJKLMNOP";const j="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.TJVA95OrM7E2cBab30RMHrHDcEfxjoYZgeFONFh7HgQ";`)
+	res, err := AnalyzeSource("bundle.min.js", src, Options{Mode: ModeSecrets})
+	if err != nil {
+		t.Fatalf("AnalyzeSource: %v", err)
+	}
+	assertSecret(t, res.Findings, "aws_access_key")
+	assertSecret(t, res.Findings, "github_token")
+	assertSecret(t, res.Findings, "stripe_secret_key")
+	assertSecret(t, res.Findings, "jwt")
+	assertNoGenericForSpecific(t, res.Findings)
+}
+
+func TestAnalyzeSourceUsesContextOnlyToBoostGenericEntropy(t *testing.T) {
+	plainValue := "MNBVCXZLKJHGFDSAPOIUYTREWQ987654"
+	friendlyValue := "QAZWSXEDCRFVTGBYHNUJMIKOLP123456"
+	src := []byte(`const x="` + plainValue + `";const apiKey="` + friendlyValue + `";`)
+	res, err := AnalyzeSource("bundle.js", src, Options{Mode: ModeSecrets})
+	if err != nil {
+		t.Fatalf("AnalyzeSource: %v", err)
+	}
+	genericValues := map[string]bool{}
+	for _, finding := range res.Findings {
+		if finding.Rule == "generic_high_entropy" {
+			genericValues[finding.Value] = true
+		}
+	}
+	for _, want := range []string{plainValue, friendlyValue} {
+		if !genericValues[want] {
+			t.Fatalf("missing context-independent generic value %q in %#v", want, res.Findings)
+		}
+	}
+	plainConfidence := genericConfidence(t, `const x="`+plainValue+`";`)
+	friendlyConfidence := genericConfidence(t, `const apiKey="`+friendlyValue+`";`)
+	if friendlyConfidence <= plainConfidence {
+		t.Fatalf("generic confidence plain=%f friendly=%f, want friendly context boost", plainConfidence, friendlyConfidence)
+	}
+}
+
+func TestSecretTokensPreservesJWT(t *testing.T) {
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.TJVA95OrM7E2cBab30RMHrHDcEfxjoYZgeFONFh7HgQ"
+	for _, token := range secretTokens(jwt) {
+		if token == jwt {
+			return
+		}
+	}
+	t.Fatalf("secretTokens(%q) = %#v, want preserved JWT", jwt, secretTokens(jwt))
+}
+
+func TestClassifierMatchesJWT(t *testing.T) {
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.TJVA95OrM7E2cBab30RMHrHDcEfxjoYZgeFONFh7HgQ"
+	matches, err := classifySecret(secretCandidate{Value: jwt})
+	if err != nil {
+		t.Fatalf("classifySecret: %v", err)
+	}
+	for _, match := range matches {
+		if match.class == "jwt" {
+			return
+		}
+	}
+	t.Fatalf("classifySecret(%q) = %#v, want jwt", jwt, matches)
+}
+
 func TestAnalyzeFilesStableOrderWithWorkers(t *testing.T) {
 	dir := t.TempDir()
 	paths := make([]string, 0, 4)
@@ -137,4 +200,34 @@ func assertSecret(t *testing.T, findings []Finding, rule string) {
 		}
 	}
 	t.Fatalf("missing secret rule %q in %#v", rule, findings)
+}
+
+func assertNoGenericForSpecific(t *testing.T, findings []Finding) {
+	t.Helper()
+	specificValues := map[string]bool{}
+	for _, finding := range findings {
+		if finding.Kind == "secret" && finding.Rule != "generic_high_entropy" {
+			specificValues[finding.Value] = true
+		}
+	}
+	for _, finding := range findings {
+		if finding.Rule == "generic_high_entropy" && specificValues[finding.Value] {
+			t.Fatalf("generic duplicate for specific secret %#v in %#v", finding, findings)
+		}
+	}
+}
+
+func genericConfidence(t *testing.T, src string) float64 {
+	t.Helper()
+	res, err := AnalyzeSource("bundle.js", []byte(src), Options{Mode: ModeSecrets})
+	if err != nil {
+		t.Fatalf("AnalyzeSource: %v", err)
+	}
+	for _, finding := range res.Findings {
+		if finding.Rule == "generic_high_entropy" {
+			return finding.Confidence
+		}
+	}
+	t.Fatalf("missing generic_high_entropy in %#v", res.Findings)
+	return 0
 }
