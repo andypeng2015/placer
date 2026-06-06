@@ -61,6 +61,7 @@ func TestLooksLikeNoisePathUnit(t *testing.T) {
 		"https?://(.*)bing.com", "google.([^/?]*)", "(.*)foo",
 		"text/javascript", "application/json", "image/png", "audio/mpeg",
 		"OPR/", "Edg/", "Chrome/", "Trident/", "SamsungBrowser/", "CriOS/",
+		`CriOS\/`, `FxiOS\/`, `Edg\/`, "Konqueror[:/]?", // escaped-slash + char-class UA/regex forms
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",
 	}
 	for _, v := range noise {

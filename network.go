@@ -192,7 +192,7 @@ func classifyPathLike(value string) bool {
 // regexMetaSignals are substrings that occur in regex patterns but never in a
 // real URL path. Minified bundles store patterns as string literals (for
 // RegExp(...)), and the path classifier would otherwise report them as paths.
-var regexMetaSignals = []string{"(.*", "(.+", "[^", "(?", ".*)", ".+)"}
+var regexMetaSignals = []string{"(.*", "(.+", "[^", "(?", ".*)", ".+)", "]?", "]*", "]+", "]{"}
 
 // mimeTopLevelTypes are the IANA top-level media types; a `type/subtype` string
 // with one of these prefixes is a MIME type, not an endpoint.
@@ -231,13 +231,14 @@ func looksLikeNoisePath(value string) bool {
 	if isMIMEType(v) {
 		return true
 	}
-	// 4. bare UA product tokens (no leading slash; first segment is a UA token).
+	// 4. bare UA product tokens: a leading run of letters that is a known UA
+	//    product token followed by a non-letter ("OPR/", "CriOS\/", "Konqueror[").
 	if !strings.HasPrefix(v, "/") {
-		head := v
-		if i := strings.IndexByte(v, '/'); i >= 0 {
-			head = v[:i]
+		n := 0
+		for n < len(v) && ((v[n] >= 'A' && v[n] <= 'Z') || (v[n] >= 'a' && v[n] <= 'z')) {
+			n++
 		}
-		if uaTokens[head] {
+		if n > 0 && n < len(v) && uaTokens[v[:n]] {
 			return true
 		}
 	}
