@@ -249,16 +249,34 @@ func collapseSubsumedPaths(in []Finding) []Finding {
 	if len(in) == 0 {
 		return in
 	}
-	specific := make(map[string]struct{}, len(in))
+	key := func(f Finding) string {
+		return fmt.Sprintf("%s\x00%d\x00%s", f.Location.File, f.Location.Line, f.Value)
+	}
+	hasEndpoint := make(map[string]struct{}, len(in))
+	hasSpecific := make(map[string]struct{}, len(in)) // endpoint or url
 	for _, f := range in {
-		if f.Kind == "endpoint" || f.Kind == "url" {
-			specific[fmt.Sprintf("%s\x00%d\x00%s", f.Location.File, f.Location.Line, f.Value)] = struct{}{}
+		k := key(f)
+		switch f.Kind {
+		case "endpoint":
+			hasEndpoint[k] = struct{}{}
+			hasSpecific[k] = struct{}{}
+		case "url":
+			hasSpecific[k] = struct{}{}
 		}
 	}
 	out := in[:0]
 	for _, f := range in {
+		k := key(f)
+		// A bare path is subsumed by any endpoint/url for the same value+line.
 		if f.Kind == "path" {
-			if _, ok := specific[fmt.Sprintf("%s\x00%d\x00%s", f.Location.File, f.Location.Line, f.Value)]; ok {
+			if _, ok := hasSpecific[k]; ok {
+				continue
+			}
+		}
+		// A url is subsumed by a typed endpoint for the same value+line (the
+		// endpoint carries method/sink semantics the url does not).
+		if f.Kind == "url" {
+			if _, ok := hasEndpoint[k]; ok {
 				continue
 			}
 		}

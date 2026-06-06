@@ -5,9 +5,11 @@ import "testing"
 // WebSocket/SSE endpoints use ws:// and wss:// schemes; they must be recognized
 // as absolute URLs, not mis-classified as relative paths.
 func TestWebSocketSchemesAreURLs(t *testing.T) {
+	// Bare assignments (not `new WebSocket(...)`, which now yields a typed
+	// endpoint) so this isolates absolute-URL scheme recognition.
 	src := []byte(`
-var a=new WebSocket("wss://api.x.com/socket");
-var b=new WebSocket("ws://localhost:8080/live");
+var a="wss://api.x.com/socket";
+var b="ws://localhost:8080/live";
 `)
 	res, err := AnalyzeSource("app.js", src, Options{Mode: ModeURLs})
 	if err != nil {

@@ -27,6 +27,11 @@ func extractNetworkFindings(path string, tree *gotreesitter.Tree, endpointsOnly 
 				findings = append(findings, f)
 			}
 		}
+		if typ == "new_expression" {
+			if f, ok := endpointFromNew(path, n, lang, source); ok {
+				findings = append(findings, f)
+			}
+		}
 	})
 	return findings
 }
@@ -106,6 +111,18 @@ func endpointFromCall(path string, n *gotreesitter.Node, lang *gotreesitter.Lang
 			endpoint = literalNodeValue(lits[0], source)
 			method = methodFromObjectText(callText)
 		}
+	case fnText == "navigator.sendBeacon" || strings.HasSuffix(fnText, ".sendBeacon"):
+		method = "POST"
+		if len(lits) > 0 {
+			endpointNode = lits[0]
+			endpoint = literalNodeValue(lits[0], source)
+		}
+	case fnText == "import":
+		method = "GET"
+		if len(lits) > 0 {
+			endpointNode = lits[0]
+			endpoint = literalNodeValue(lits[0], source)
+		}
 	}
 
 	endpoint = strings.TrimSpace(endpoint)
@@ -124,6 +141,44 @@ func endpointFromCall(path string, n *gotreesitter.Node, lang *gotreesitter.Lang
 		Value:      endpoint,
 		Location:   locationForNode(path, locNode),
 		Context:    lineContext(source, int(locNode.StartByte())),
+		Method:     method,
+		Confidence: 0.88,
+	}, true
+}
+
+// endpointFromNew types constructor-based network sinks — new WebSocket(url),
+// new EventSource(url), new Request(url, {method}) — as endpoints with the
+// right method, instead of leaving them as bare path/url literals.
+func endpointFromNew(path string, n *gotreesitter.Node, lang *gotreesitter.Language, source []byte) (Finding, bool) {
+	ctor := n.ChildByFieldName("constructor", lang)
+	if ctor == nil {
+		return Finding{}, false
+	}
+	name := strings.TrimSpace(ctor.Text(source))
+	method := "GET"
+	switch {
+	case name == "WebSocket" || strings.HasSuffix(name, ".WebSocket"):
+	case name == "EventSource" || strings.HasSuffix(name, ".EventSource"):
+	case name == "Request" || strings.HasSuffix(name, ".Request"):
+		if m := methodFromObjectText(n.Text(source)); m != "" {
+			method = m
+		}
+	default:
+		return Finding{}, false
+	}
+	lits := literalNodes(n.ChildByFieldName("arguments", lang), lang)
+	if len(lits) == 0 {
+		return Finding{}, false
+	}
+	endpoint := strings.TrimSpace(literalNodeValue(lits[0], source))
+	if endpoint == "" || (!classifyPathLike(endpoint) && len(extractAbsoluteURLs(endpoint)) == 0) {
+		return Finding{}, false
+	}
+	return Finding{
+		Kind:       "endpoint",
+		Value:      endpoint,
+		Location:   locationForNode(path, lits[0]),
+		Context:    lineContext(source, int(lits[0].StartByte())),
 		Method:     method,
 		Confidence: 0.88,
 	}, true
