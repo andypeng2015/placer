@@ -126,6 +126,13 @@ var (
 		{class: "google_api_key", confidence: 0.93, re: regexp.MustCompile(`^AIza[0-9A-Za-z_-]{35}$`)},
 		{class: "slack_token", confidence: 0.92, re: regexp.MustCompile(`^xox[baprs]-[0-9A-Za-z-]{20,}$`)},
 		{class: "jwt", confidence: 0.82, re: regexp.MustCompile(`^eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}$`)},
+		{class: "anthropic_api_key", confidence: 0.95, re: regexp.MustCompile(`^sk-ant-[A-Za-z0-9_-]{20,}$`)},
+		{class: "openai_api_key", confidence: 0.92, re: regexp.MustCompile(`^sk-(proj-|svcacct-|admin-)?[A-Za-z0-9]{20,}$`)},
+		{class: "gitlab_pat", confidence: 0.95, re: regexp.MustCompile(`^glpat-[A-Za-z0-9_-]{20,}$`)},
+		{class: "twilio_api_key", confidence: 0.90, re: regexp.MustCompile(`^SK[0-9a-f]{32}$`)},
+		{class: "sendgrid_api_key", confidence: 0.95, re: regexp.MustCompile(`^SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43,}$`)},
+		{class: "npm_token", confidence: 0.95, re: regexp.MustCompile(`^npm_[A-Za-z0-9]{36}$`)},
+		{class: "github_fine_grained_pat", confidence: 0.95, re: regexp.MustCompile(`^github_pat_[A-Za-z0-9_]{82}$`)},
 	}
 	secretContextRe = regexp.MustCompile(`(?i)(api[_-]?key|secret|token|passwd|password|bearer|authorization)`)
 )
