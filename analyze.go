@@ -233,5 +233,36 @@ func dedupeFindings(in []Finding) []Finding {
 		seen[key] = struct{}{}
 		out = append(out, f)
 	}
+	return collapseSubsumedPaths(out)
+}
+
+// collapseSubsumedPaths drops bare "path" findings that merely restate a more
+// specific "endpoint" or "url" finding for the same value on the same line.
+// fetch("/x") surfaces the string argument twice: once as an endpoint (from
+// the call, carrying the HTTP method) and once as a path (from the string
+// literal). The endpoint is strictly more informative, so the path is noise.
+// Same line + same value is the disambiguator — it collapses both the
+// exact-span fetch case and the call-vs-string-span jQuery/ajax case without
+// touching genuinely standalone paths (a bare "/foo" with no enclosing call
+// has no endpoint to subsume it, so it survives).
+func collapseSubsumedPaths(in []Finding) []Finding {
+	if len(in) == 0 {
+		return in
+	}
+	specific := make(map[string]struct{}, len(in))
+	for _, f := range in {
+		if f.Kind == "endpoint" || f.Kind == "url" {
+			specific[fmt.Sprintf("%s\x00%d\x00%s", f.Location.File, f.Location.Line, f.Value)] = struct{}{}
+		}
+	}
+	out := in[:0]
+	for _, f := range in {
+		if f.Kind == "path" {
+			if _, ok := specific[fmt.Sprintf("%s\x00%d\x00%s", f.Location.File, f.Location.Line, f.Value)]; ok {
+				continue
+			}
+		}
+		out = append(out, f)
+	}
 	return out
 }

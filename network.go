@@ -175,6 +175,13 @@ func classifyPathLike(value string) bool {
 		if (first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || (first >= '0' && first <= '9') {
 			return hasPathSignal(value)
 		}
+		// A leading '*' is the folded placeholder for a dynamic base, e.g.
+		// `${API}/v3/keys` -> "*/v3/keys". The static suffix is a recoverable
+		// endpoint, so treat "*/path" as path-like (symmetric with the
+		// trailing "/path?id=*" case, which already classifies).
+		if first == '*' && len(value) > 1 && value[1] == '/' {
+			return hasPathSignal(value)
+		}
 	}
 	return false
 }

@@ -45,6 +45,43 @@ func TestTemplatePathFolding(t *testing.T) {
 	assertFinding(t, res.Findings, "path", "/api/users/*")
 }
 
+func TestTemplatePathFoldingLeadingInterpolation(t *testing.T) {
+	// `${API}/v3/keys` folds to `*/v3/keys`: a dynamic base with a static
+	// suffix. The recoverable endpoint is `*/v3/keys` and placer must surface
+	// it. The compat GetURLs path already does (emits EXPR/v3/keys); the JSON
+	// path must not be strictly worse.
+	src := []byte("fetch(`${API}/v3/keys`);")
+	res, err := AnalyzeSource("app.js", src, Options{Mode: ModeURLs})
+	if err != nil {
+		t.Fatalf("AnalyzeSource: %v", err)
+	}
+	assertEndpoint(t, res.Findings, "*/v3/keys", "GET")
+}
+
+func TestEndpointSubsumesRedundantPath(t *testing.T) {
+	// fetch("/api/v1/users") is reported once as an endpoint (from the call,
+	// carrying the method) and once as a bare path (from the same string
+	// literal). The path is redundant noise; only the endpoint should survive.
+	src := []byte(`fetch("/api/v1/users");`)
+	res, err := AnalyzeSource("app.js", src, Options{Mode: ModeURLs})
+	if err != nil {
+		t.Fatalf("AnalyzeSource: %v", err)
+	}
+	assertEndpoint(t, res.Findings, "/api/v1/users", "GET")
+	n := 0
+	for _, f := range res.Findings {
+		if f.Value == "/api/v1/users" {
+			n++
+		}
+		if f.Kind == "path" && f.Value == "/api/v1/users" {
+			t.Fatalf("redundant path finding survived dedupe: %#v", res.Findings)
+		}
+	}
+	if n != 1 {
+		t.Fatalf("want exactly 1 finding for /api/v1/users, got %d: %#v", n, res.Findings)
+	}
+}
+
 func TestAnalyzeSourceFindsObfuscatedSecrets(t *testing.T) {
 	src := []byte(`
 const aws = 'AKIA' + '1234567890ABCDEF';
